@@ -410,7 +410,7 @@ function speak(text) {
   speechSynthesis.cancel();
   const u = new SpeechSynthesisUtterance(defancy(text).replace(/[*_`#]/g, ''));
   u.rate = 0.95; u.pitch = 0.8;
-  if (sysVoiceObj) u.voice = sysVoiceObj;
+  if (sysVoiceObj) { u.voice = sysVoiceObj; u.lang = sysVoiceObj.lang; }
   u.onstart = () => { window.EllenAvatar.speaking = true; };
   u.onend = () => { window.EllenAvatar.speaking = false; };
   speechSynthesis.speak(u);
