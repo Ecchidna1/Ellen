@@ -151,6 +151,8 @@ header h1{margin:0; font-size:14px; letter-spacing:.14em; text-transform:upperca
     <div class="tools">
       <button id="btn-voice" title="Voice">🔊</button>
       <button id="btn-settings" title="Settings">⚙</button>
+      <button id="btn-save-ckpt" title="Save checkpoint">💾</button>
+      <button id="btn-restore-ckpt" title="Restore checkpoint">⏮</button>
       <button id="btn-clear" title="Clear">✕</button>
     </div>
   </header>
@@ -277,7 +279,7 @@ fileInput.onchange = e => {
 
 /* ============ chat ============ */
 const API = 'https://api.venice.ai/api/v1';
-const LS = { key:'ellen.key', model:'ellen.model', temp:'ellen.temp', voice:'ellen.voice', sysVoice:'ellen.sysVoice', log:'ellen.log' };
+const LS = { key:'ellen.key', model:'ellen.model', temp:'ellen.temp', voice:'ellen.voice', sysVoice:'ellen.sysVoice', checkpoint:'ellen.checkpoint', log:'ellen.log' };
 
 const SYSTEM = `You are Ellen Joe, maid of Victoria Housekeeping Co. and a shark girl.
 Voice: deadpan, dry, low-effort, sarcastic but never mean-spirited. You act put out by
@@ -341,6 +343,25 @@ $('btn-models').onclick = async () => {
 $('btn-clear').onclick = () => {
   if (!confirm('Clear the whole conversation?')) return;
   messages = []; localStorage.removeItem(LS.log); render();
+};
+
+$('btn-save-ckpt').onclick = e => {
+  localStorage.setItem(LS.checkpoint, JSON.stringify({ at: Date.now(), messages }));
+  const b = e.currentTarget;
+  b.textContent = '✓';
+  setTimeout(() => b.textContent = '💾', 1200);
+};
+
+$('btn-restore-ckpt').onclick = () => {
+  const raw = localStorage.getItem(LS.checkpoint);
+  if (!raw) return alert('No checkpoint saved yet.');
+  const data = JSON.parse(raw);
+  const when = new Date(data.at).toLocaleString();
+  if (!confirm(`Restore the chat as of ${when}? Everything after that is lost.`)) return;
+  speechSynthesis.cancel();
+  messages = data.messages;
+  localStorage.setItem(LS.log, JSON.stringify(messages));
+  render();
 };
 
 $('btn-voice').onclick = e => {
@@ -472,7 +493,7 @@ async function send() {
         const payload = s.slice(5).trim();
         if (payload === '[DONE]') continue;
         try {
-          const delta = JSON.parse(payload).choices?.[0]?.delta?.content;
+          const delta = JSON.parse(payload)?.choices?.[0]?.delta?.content;
           if (delta) {
             acc += delta;
             botEl.textContent = defancy(acc);
