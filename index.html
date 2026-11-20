@@ -372,9 +372,9 @@ function speak(text) {
   speechSynthesis.cancel();
   const u = new SpeechSynthesisUtterance(text.replace(/[*_`#]/g, ''));
   u.rate = 0.95; u.pitch = 0.8;
-  const v = speechSynthesis.getVoices()
-    .find(v => /female|samantha|zira|google uk english female/i.test(v.name));
-  if (v) u.voice = v;
+  const chosen = speechSynthesis.getVoices()
+    .find(v => v.voiceURI === localStorage.getItem(LS.sysVoice));
+  if (chosen) u.voice = chosen;
   u.onstart = () => { window.EllenAvatar.speaking = true; };
   u.onend = () => { window.EllenAvatar.speaking = false; };
   speechSynthesis.speak(u);
