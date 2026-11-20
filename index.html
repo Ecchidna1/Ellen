@@ -409,7 +409,7 @@ function speak(text) {
   if (!cfg.voice || !window.speechSynthesis) return;
   speechSynthesis.cancel();
   const u = new SpeechSynthesisUtterance(defancy(text).replace(/[*_`#]/g, ''));
-  u.rate = 0.95; u.pitch = 0.8;
+  u.rate = 0.95; u.pitch = 0.95;
   if (sysVoiceObj) { u.voice = sysVoiceObj; u.lang = sysVoiceObj.lang; }
   u.onstart = () => { window.EllenAvatar.speaking = true; };
   u.onend = () => { window.EllenAvatar.speaking = false; };
