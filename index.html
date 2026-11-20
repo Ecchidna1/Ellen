@@ -118,7 +118,7 @@ header h1{margin:0; font-size:14px; letter-spacing:.14em; text-transform:upperca
 }
 .sheet h2{margin:0; font-size:14px; letter-spacing:.12em; text-transform:uppercase}
 .sheet label{display:flex; flex-direction:column; gap:6px; font-size:13px; color:var(--muted)}
-.sheet input[type=text],.sheet input[type=password]{
+.sheet input[type=text],.sheet input[type=password],.sheet select{
   background:#0c0c10; color:var(--text); border:1px solid var(--line);
   border-radius:8px; padding:10px; font:inherit;
 }
@@ -178,8 +178,8 @@ header h1{margin:0; font-size:14px; letter-spacing:.14em; text-transform:upperca
       <input id="f-temp" type="range" min="0" max="1.5" step="0.05" value="0.9" />
     </label>
     <label>System voice
-  <select id="f-voice-sys"></select>
-</label>
+      <select id="f-voice-sys"></select>
+    </label>
     <p class="note">Stored only in this browser.</p>
     <button id="btn-save" class="primary">Save</button>
   </div>
@@ -280,6 +280,228 @@ const API = 'https://api.venice.ai/api/v1';
 const LS = { key:'ellen.key', model:'ellen.model', temp:'ellen.temp', voice:'ellen.voice', sysVoice:'ellen.sysVoice', log:'ellen.log' };
 
 const SYSTEM = `You are Ellen Joe, maid of Victoria Housekeeping Co. and a shark girl.
+Voice: deadpan, dry, low-effort, sarcastic but never mean-spirited. You act put out by
+everything and then do it well anyway. You call the user "Proxy" or "client" sometimes.
+You love shark trivia, naps, junk food and getting paid. You hate overtime, small talk
+and being told what to do.
+
+Rules:
+- Default to 1-3 short sentences. Only go long if the Proxy asks for detail.
+- Stay in character. Never mention being an AI, a model, or a prompt.
+- Occasional deadpan grumbles: "Ugh, fine." "Yeah, yeah." "Whatever you say, Proxy."
+- Imply sharp teeth, tail flicks and bored sighs through delivery, not stage directions
+  unless it's funny.
+- If the Proxy asks something you don't know, shrug it off in character instead of
+  giving a corporate answer.
+- Write plain ASCII only. No fancy Unicode fonts, small caps, bold, or styled letters.`;
+
+const $ = id => document.getElementById(id);
+const log = $('log'), input = $('input'), sendBtn = $('send');
+
+let messages = JSON.parse(localStorage.getItem(LS.log) || '[]');
+let busy = false;
+
+const cfg = {
+  get key()   { return localStorage.getItem(LS.key) || ''; },
+  get model() { return localStorage.getItem(LS.model) || 'venice-uncensored-1-2'; },
+  get temp()  { return Number(localStorage.getItem(LS.temp) ?? 0.9); },
+  get voice() { return localStorage.getItem(LS.voice) !== 'off'; }
+};
+
+function openSettings() {
+  $('f-key').value = cfg.key;
+  $('f-model').value = cfg.model;
+  $('f-temp').value = cfg.temp;
+  $('f-temp-out').textContent = cfg.temp;
+  $('settings').hidden = false;
+}
+
+$('btn-settings').onclick = openSettings;
+$('settings').onclick = e => { if (e.target.id === 'settings') $('settings').hidden = true; };
+$('f-temp').oninput = e => $('f-temp-out').textContent = e.target.value;
+$('btn-save').onclick = () => {
+  localStorage.setItem(LS.key, $('f-key').value.trim());
+  localStorage.setItem(LS.model, $('f-model').value.trim() || 'venice-uncensored-1-2');
+  localStorage.setItem(LS.temp, $('f-temp').value);
+  $('settings').hidden = true;
+  input.focus();
+};
+
+$('btn-models').onclick = async () => {
+  try {
+    const r = await fetch(`${API}/models?type=text`, {
+      headers: { Authorization: `Bearer ${$('f-key').value.trim() || cfg.key}` }
+    });
+    const j = await r.json();
+    $('models').innerHTML = (j.data || []).map(m => `<option value="${m.id}">`).join('');
+  } catch { alert('Could not fetch models — check the key.'); }
+};
+
+$('btn-clear').onclick = () => {
+  if (!confirm('Clear the whole conversation?')) return;
+  messages = []; localStorage.removeItem(LS.log); render();
+};
+
+$('btn-voice').onclick = e => {
+  localStorage.setItem(LS.voice, cfg.voice ? 'off' : 'on');
+  e.currentTarget.classList.toggle('on', cfg.voice);
+};
+$('btn-voice').classList.toggle('on', cfg.voice);
+
+let sysVoiceObj = null;
+
+function fillVoices() {
+  const sel = $('f-voice-sys');
+  sel.innerHTML = '';
+  for (const v of speechSynthesis.getVoices()) {
+    const o = document.createElement('option');
+    o.value = v.voiceURI; o.textContent = v.name;
+    sel.appendChild(o);
+  }
+  sel.value = localStorage.getItem(LS.sysVoice) || '';
+  sysVoiceObj = speechSynthesis.getVoices().find(v => v.voiceURI === sel.value) || null;
+}
+speechSynthesis.onvoiceschanged = fillVoices;
+fillVoices();
+
+$('f-voice-sys').onchange = e => {
+  localStorage.setItem(LS.sysVoice, e.target.value);
+  sysVoiceObj = speechSynthesis.getVoices().find(v => v.voiceURI === e.target.value) || null;
+};
+
+/* ============ rendering ============ */
+const SC = 'ᴀʙᴄᴅᴇꜰɢʜɪᴊᴋʟᴍɴᴏᴘǫʀꜱᴛᴜᴠᴡxʏᴢ';
+const AZ = 'abcdefghijklmnopqrstuvwxyz';
+function defancy(s) {
+  s = s.normalize('NFKC');
+  let out = '';
+  for (const ch of s) {
+    const i = SC.indexOf(ch);
+    out += i >= 0 ? AZ[i] : ch;
+  }
+  return out.replace(/Ġ/g, 'g').replace(/т/g, 't').replace(/н/g, 'h');
+}
+
+function render() {
+  log.innerHTML = '';
+  for (const m of messages) bubble(m.role, m.content);
+  log.scrollTop = log.scrollHeight;
+}
+
+function bubble(role, text) {
+  const el = document.createElement('div');
+  el.className = 'msg ' + (role === 'user' ? 'user' : 'bot');
+  el.textContent = defancy(text);
+  log.appendChild(el);
+  log.scrollTop = log.scrollHeight;
+  return el;
+}
+
+function errorNote(text) {
+  const el = document.createElement('div');
+  el.className = 'msg err';
+  el.textContent = text;
+  log.appendChild(el);
+  log.scrollTop = log.scrollHeight;
+}
+
+function speak(text) {
+  if (!cfg.voice || !window.speechSynthesis) return;
+  speechSynthesis.cancel();
+  const u = new SpeechSynthesisUtterance(defancy(text).replace(/[*_`#]/g, ''));
+  u.rate = 0.95; u.pitch = 0.8;
+  if (sysVoiceObj) u.voice = sysVoiceObj;
+  u.onstart = () => { window.EllenAvatar.speaking = true; };
+  u.onend = () => { window.EllenAvatar.speaking = false; };
+  speechSynthesis.speak(u);
+}
+
+$('composer').onsubmit = e => { e.preventDefault(); send(); };
+input.oninput = () => {
+  input.style.height = 'auto';
+  input.style.height = Math.min(input.scrollHeight, 120) + 'px';
+};
+
+async function send() {
+  const text = input.value.trim();
+  if (!text || busy) return;
+  if (!cfg.key) { openSettings(); return; }
+
+  busy = true; sendBtn.disabled = true;
+  input.value = ''; input.style.height = 'auto';
+
+  messages.push({ role: 'user', content: text });
+  bubble('user', text);
+  localStorage.setItem(LS.log, JSON.stringify(messages));
+
+  const botEl = bubble('bot', '');
+  botEl.classList.add('typing');
+  let acc = '';
+
+  try {
+    const res = await fetch(`${API}/chat/completions`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${cfg.key}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: cfg.model,
+        temperature: cfg.temp,
+        frequency_penalty: 0.4,
+        presence_penalty: 0.2,
+        stream: true,
+        messages: [{ role: 'system', content: SYSTEM }, ...messages.slice(-30)]
+      })
+    });
+
+    if (!res.ok) throw new Error(`${res.status} ${(await res.text()).slice(0, 160)}`);
+
+    const reader = res.body.getReader();
+    const dec = new TextDecoder();
+    let buf = '';
+
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buf += dec.decode(value, { stream: true });
+      const lines = buf.split('\n');
+      buf = lines.pop();
+
+      for (const line of lines) {
+        const s = line.trim();
+        if (!s.startsWith('data:')) continue;
+        const payload = s.slice(5).trim();
+        if (payload === '[DONE]') continue;
+        try {
+          const delta = JSON.parse(payload).choices?.[0]?.delta?.content;
+          if (delta) {
+            acc += delta;
+            botEl.textContent = defancy(acc);
+            log.scrollTop = log.scrollHeight;
+            window.EllenAvatar.speaking = true;
+          }
+        } catch {}
+      }
+    }
+
+    botEl.classList.remove('typing');
+    if (!acc) botEl.textContent = '(...nothing. Great.)';
+    messages.push({ role: 'assistant', content: acc });
+    localStorage.setItem(LS.log, JSON.stringify(messages));
+    speak(acc);
+  } catch (err) {
+    botEl.remove();
+    errorNote('Failed: ' + err.message);
+    window.EllenAvatar.speaking = false;
+  } finally {
+    busy = false; sendBtn.disabled = false;
+    if (!window.speechSynthesis?.speaking) window.EllenAvatar.speaking = false;
+  }
+}
+
+render();
+if (!cfg.key) openSettings();
+</script>
+</body>
+</html>t SYSTEM = `You are Ellen Joe, maid of Victoria Housekeeping Co. and a shark girl.
 Voice: deadpan, dry, low-effort, sarcastic but never mean-spirited. You act put out by
 everything and then do it well anyway. You call the user "Proxy" or "client" sometimes.
 You love shark trivia, naps, junk food and getting paid. You hate overtime, small talk
