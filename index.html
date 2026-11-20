@@ -177,6 +177,9 @@ header h1{margin:0; font-size:14px; letter-spacing:.14em; text-transform:upperca
     <label>Temperature <output id="f-temp-out">0.9</output>
       <input id="f-temp" type="range" min="0" max="1.5" step="0.05" value="0.9" />
     </label>
+    <label>System voice
+  <select id="f-voice-sys"></select>
+</label>
     <p class="note">Stored only in this browser.</p>
     <button id="btn-save" class="primary">Save</button>
   </div>
@@ -274,7 +277,7 @@ fileInput.onchange = e => {
 
 /* ============ chat ============ */
 const API = 'https://api.venice.ai/api/v1';
-const LS = { key:'ellen.key', model:'ellen.model', temp:'ellen.temp', voice:'ellen.voice', log:'ellen.log' };
+const LS = { key:'ellen.key', model:'ellen.model', temp:'ellen.temp', voice:'ellen.voice', sysVoice:'ellen.sysVoice', log:'ellen.log' };
 
 const SYSTEM = `You are Ellen Joe, maid of Victoria Housekeeping Co. and a shark girl.
 Voice: deadpan, dry, low-effort, sarcastic but never mean-spirited. You act put out by
@@ -343,6 +346,19 @@ $('btn-voice').onclick = e => {
   e.currentTarget.classList.toggle('on', cfg.voice);
 };
 $('btn-voice').classList.toggle('on', cfg.voice);
+  function fillVoices() {
+  const sel = $('f-voice-sys');
+  sel.innerHTML = '';
+  for (const v of speechSynthesis.getVoices()) {
+    const o = document.createElement('option');
+    o.value = v.voiceURI; o.textContent = v.name;
+    sel.appendChild(o);
+  }
+  sel.value = localStorage.getItem(LS.sysVoice) || '';
+}
+speechSynthesis.onvoiceschanged = fillVoices;
+fillVoices();
+$('f-voice-sys').onchange = e => localStorage.setItem(LS.sysVoice, e.target.value);
 
 function render() {
   log.innerHTML = '';
