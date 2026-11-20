@@ -371,7 +371,7 @@ function speak(text) {
   if (!cfg.voice || !window.speechSynthesis) return;
   speechSynthesis.cancel();
   const u = new SpeechSynthesisUtterance(text.replace(/[*_`#]/g, ''));
-  u.rate = 1.02; u.pitch = 0.92;
+  u.rate = 0.95; u.pitch = 0.8;
   const v = speechSynthesis.getVoices()
     .find(v => /female|samantha|zira|google uk english female/i.test(v.name));
   if (v) u.voice = v;
