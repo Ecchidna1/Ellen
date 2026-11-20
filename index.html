@@ -1,0 +1,464 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="theme-color" content="#0b0b0d" />
+<title>Ellen</title>
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.180.0/examples/jsm/",
+    "@pixiv/three-vrm": "https://cdn.jsdelivr.net/npm/@pixiv/three-vrm@3/lib/three-vrm.module.min.js"
+  }
+}
+</script>
+<style>
+:root{
+  --bg:#0b0b0d; --panel:#131317; --line:#26262e;
+  --red:#e0354b; --red-dim:#7d1d2a; --text:#e8e6ea; --muted:#8b8794;
+}
+*{box-sizing:border-box; -webkit-tap-highlight-color:transparent}
+html,body{height:100%}
+body{
+  margin:0; background:var(--bg); color:var(--text); overflow:hidden;
+  font:15px/1.55 system-ui,-apple-system,sans-serif;
+  display:grid; grid-template-rows:40dvh 1fr;
+}
+@media(min-width:760px){
+  body{grid-template-rows:none; grid-template-columns:minmax(280px,34%) 1fr}
+}
+.stage{
+  position:relative; overflow:hidden; border-bottom:1px solid var(--line);
+  background:
+    radial-gradient(70% 90% at 50% 0%,#2a1017,#0a0a0c 75%);
+}
+#vrm-canvas{width:100%; height:100%; display:block}
+#fallback{
+  position:absolute; inset:0; width:100%; height:100%;
+  object-fit:cover; object-position:center 22%;
+}
+#fallback.hide{display:none}
+.fin{
+  position:absolute; right:14%; top:52%; width:56px; height:56px;
+  background:var(--red-dim); opacity:.25;
+  clip-path:polygon(0 100%,100% 100%,62% 0);
+}
+#stage-hint{position:absolute; top:10px; left:10px; z-index:3}
+#load-vrm{
+  background:rgba(19,19,23,.82); color:var(--muted); border:1px solid var(--line);
+  padding:6px 10px; border-radius:8px; font-size:12px; cursor:pointer;
+}
+.nameplate{
+  position:absolute; left:12px; bottom:10px; z-index:3;
+  background:rgba(11,11,13,.72); backdrop-filter:blur(6px);
+  border:1px solid var(--line); border-radius:10px; padding:6px 11px;
+  font-weight:600; font-size:14px;
+}
+.nameplate small{display:block; color:var(--muted); font-weight:400; font-size:10px}
+.dot{
+  display:inline-block; width:7px; height:7px; border-radius:50%;
+  background:var(--red); margin-right:6px; box-shadow:0 0 8px var(--red);
+}
+.chat{display:flex; flex-direction:column; min-height:0}
+header{
+  display:flex; align-items:center; gap:10px; padding:10px 14px;
+  border-bottom:1px solid var(--line);
+}
+header h1{margin:0; font-size:14px; letter-spacing:.14em; text-transform:uppercase}
+.tools{margin-left:auto; display:flex; gap:6px}
+.tools button{
+  background:none; border:1px solid var(--line); color:var(--muted);
+  width:34px; height:34px; border-radius:8px; cursor:pointer; font-size:14px;
+}
+.tools button.on{color:var(--red); border-color:var(--red-dim)}
+.log{
+  flex:1; overflow-y:auto; padding:16px 14px; display:flex;
+  flex-direction:column; gap:10px; -webkit-overflow-scrolling:touch;
+}
+.msg{
+  max-width:86%; padding:9px 13px; border-radius:14px;
+  white-space:pre-wrap; overflow-wrap:anywhere;
+}
+.msg.user{align-self:flex-end; background:var(--red-dim); border-bottom-right-radius:4px}
+.msg.bot{
+  align-self:flex-start; background:var(--panel);
+  border:1px solid var(--line); border-bottom-left-radius:4px;
+}
+.msg.err{
+  align-self:center; color:var(--red); font-size:12px;
+  border:1px dashed var(--red-dim); text-align:center;
+}
+.typing::after{content:"…"; animation:pulse 1.1s infinite}
+@keyframes pulse{50%{opacity:.25}}
+.composer{
+  display:flex; gap:8px; padding:10px 12px calc(12px + env(safe-area-inset-bottom));
+  border-top:1px solid var(--line);
+}
+#input{
+  flex:1; resize:none; max-height:120px; background:var(--panel); color:var(--text);
+  border:1px solid var(--line); border-radius:12px; padding:10px 13px; font:inherit;
+}
+#input:focus{outline:none; border-color:var(--red-dim)}
+#send{
+  background:var(--red); color:#fff; border:0; border-radius:12px;
+  padding:0 18px; font-weight:600; cursor:pointer;
+}
+#send:disabled{opacity:.45}
+.modal{
+  position:fixed; inset:0; background:rgba(0,0,0,.7); display:grid;
+  place-items:center; z-index:9; padding:16px;
+}
+.modal[hidden]{display:none}
+.sheet{
+  background:var(--panel); border:1px solid var(--line); border-radius:16px;
+  padding:20px; width:100%; max-width:400px; display:flex;
+  flex-direction:column; gap:13px;
+}
+.sheet h2{margin:0; font-size:14px; letter-spacing:.12em; text-transform:uppercase}
+.sheet label{display:flex; flex-direction:column; gap:6px; font-size:13px; color:var(--muted)}
+.sheet input[type=text],.sheet input[type=password]{
+  background:#0c0c10; color:var(--text); border:1px solid var(--line);
+  border-radius:8px; padding:10px; font:inherit;
+}
+.row{display:flex; gap:6px}
+.row input{flex:1; min-width:0}
+.row button{
+  background:none; border:1px solid var(--line); color:var(--muted);
+  border-radius:8px; padding:0 12px; cursor:pointer;
+}
+.primary{background:var(--red); color:#fff; border:0; border-radius:10px; padding:12px; font-weight:600; cursor:pointer}
+.note{margin:0; font-size:11px; color:var(--muted)}
+</style>
+</head>
+<body>
+
+<div class="stage">
+  <canvas id="vrm-canvas"></canvas>
+  <div class="fin"></div>
+  <img id="fallback" src="avatar.png" alt="" onerror="this.remove()" />
+  <div id="stage-hint">
+    <button id="load-vrm">Load .vrm</button>
+    <input type="file" id="vrm-file" accept=".vrm" hidden />
+  </div>
+  <div class="nameplate"><span class="dot"></span>Ellen<small>Victoria Housekeeping Co.</small></div>
+</div>
+
+<main class="chat">
+  <header>
+    <h1>Ellen</h1>
+    <div class="tools">
+      <button id="btn-voice" title="Voice">🔊</button>
+      <button id="btn-settings" title="Settings">⚙</button>
+      <button id="btn-clear" title="Clear">✕</button>
+    </div>
+  </header>
+  <div id="log" class="log"></div>
+  <form id="composer" class="composer">
+    <textarea id="input" rows="1" placeholder="Say something to Ellen…" autocomplete="off"></textarea>
+    <button type="submit" id="send">Send</button>
+  </form>
+</main>
+
+<div id="settings" class="modal" hidden>
+  <div class="sheet">
+    <h2>Settings</h2>
+    <label>Venice API key
+      <input id="f-key" type="password" placeholder="paste key" autocapitalize="off" autocorrect="off" />
+    </label>
+    <label>Model
+      <div class="row">
+        <input id="f-model" type="text" list="models" placeholder="venice-uncensored-1-2" autocapitalize="off" autocorrect="off" />
+        <button type="button" id="btn-models">fetch</button>
+      </div>
+      <datalist id="models"></datalist>
+    </label>
+    <label>Temperature <output id="f-temp-out">0.9</output>
+      <input id="f-temp" type="range" min="0" max="1.5" step="0.05" value="0.9" />
+    </label>
+    <p class="note">Stored only in this browser.</p>
+    <button id="btn-save" class="primary">Save</button>
+  </div>
+</div>
+
+<script type="module">
+/* ============ avatar ============ */
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { VRMLoaderPlugin, VRMUtils } from '@pixiv/three-vrm';
+
+const canvas = document.getElementById('vrm-canvas');
+const fallback = document.getElementById('fallback');
+const fileInput = document.getElementById('vrm-file');
+
+let renderer, scene, camera, clock, vrm = null;
+let speaking = false, blinkT = 2, swayT = 0;
+
+window.EllenAvatar = {
+  set speaking(v) { speaking = v; },
+  get speaking() { return speaking; }
+};
+
+function init3D() {
+  renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
+  renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+  renderer.outputColorSpace = THREE.SRGBColorSpace;
+
+  scene = new THREE.Scene();
+  camera = new THREE.PerspectiveCamera(30, 1, 0.1, 20);
+  camera.position.set(0, 1.35, 1.6);
+
+  scene.add(new THREE.AmbientLight(0xffffff, 1.7));
+  const key = new THREE.DirectionalLight(0xffd9dd, 1.4);
+  key.position.set(1.5, 2.5, 2);
+  scene.add(key);
+  const rim = new THREE.DirectionalLight(0xe0354b, 2.2);
+  rim.position.set(-1.8, 1.6, -1.6);
+  scene.add(rim);
+
+  clock = new THREE.Clock();
+  resize();
+  addEventListener('resize', resize);
+  renderer.setAnimationLoop(tick);
+}
+
+function resize() {
+  const w = canvas.clientWidth || 1, h = canvas.clientHeight || 1;
+  renderer.setSize(w, h, false);
+  camera.aspect = w / h;
+  camera.updateProjectionMatrix();
+}
+
+const loader = new GLTFLoader();
+loader.register(p => new VRMLoaderPlugin(p));
+
+function loadVRM(url) {
+  loader.load(url, gltf => {
+    if (vrm) { scene.remove(vrm.scene); VRMUtils.deepDispose(vrm.scene); }
+    VRMUtils.removeUnnecessaryVertices(gltf.scene);
+    VRMUtils.combineSkeletons(gltf.scene);
+    vrm = gltf.userData.vrm;
+    vrm.scene.rotation.y = Math.PI;
+    scene.add(vrm.scene);
+    fallback.classList.add('hide');
+    document.getElementById('stage-hint').style.display = 'none';
+  }, undefined, () => { /* keep portrait */ });
+}
+
+function tick() {
+  const dt = clock.getDelta();
+  swayT += dt;
+  if (vrm) {
+    vrm.scene.position.x = Math.sin(swayT * 0.7) * 0.008;
+    vrm.scene.rotation.z = Math.sin(swayT * 0.5) * 0.012;
+    const em = vrm.expressionManager;
+    if (em) {
+      blinkT -= dt;
+      if (blinkT < 0) blinkT = 2 + Math.random() * 4;
+      em.setValue('blink', blinkT < 0.12 ? 1 : 0);
+      if (speaking) em.setValue('aa', 0.25 + Math.abs(Math.sin(performance.now() / 90)) * 0.6);
+      else em.setValue('aa', Math.max(0, (em.getValue('aa') || 0) - dt * 6));
+    }
+    vrm.update(dt);
+  }
+  renderer.render(scene, camera);
+}
+
+try { init3D(); loadVRM('ellen.vrm'); } catch (e) { console.warn(e); }
+document.getElementById('load-vrm').onclick = () => fileInput.click();
+fileInput.onchange = e => {
+  const f = e.target.files[0];
+  if (f) loadVRM(URL.createObjectURL(f));
+};
+
+/* ============ chat ============ */
+const API = 'https://api.venice.ai/api/v1';
+const LS = { key:'ellen.key', model:'ellen.model', temp:'ellen.temp', voice:'ellen.voice', log:'ellen.log' };
+
+const SYSTEM = `You are Ellen Joe, maid of Victoria Housekeeping Co. and a shark girl.
+Voice: deadpan, dry, low-effort, sarcastic but never mean-spirited. You act put out by
+everything and then do it well anyway. You call the user "Proxy" or "client" sometimes.
+You love shark trivia, naps, junk food and getting paid. You hate overtime, small talk
+and being told what to do.
+
+Rules:
+- Default to 1-3 short sentences. Only go long if the Proxy asks for detail.
+- Stay in character. Never mention being an AI, a model, or a prompt.
+- Occasional deadpan grumbles: "Ugh, fine." "Yeah, yeah." "Whatever you say, Proxy."
+- Imply sharp teeth, tail flicks and bored sighs through delivery, not stage directions
+  unless it's funny.
+- If the Proxy asks something you don't know, shrug it off in character instead of
+  giving a corporate answer.`;
+
+const $ = id => document.getElementById(id);
+const log = $('log'), input = $('input'), sendBtn = $('send');
+
+let messages = JSON.parse(localStorage.getItem(LS.log) || '[]');
+let busy = false;
+
+const cfg = {
+  get key()   { return localStorage.getItem(LS.key) || ''; },
+  get model() { return localStorage.getItem(LS.model) || 'venice-uncensored-1-2'; },
+  get temp()  { return Number(localStorage.getItem(LS.temp) ?? 0.9); },
+  get voice() { return localStorage.getItem(LS.voice) !== 'off'; }
+};
+
+function openSettings() {
+  $('f-key').value = cfg.key;
+  $('f-model').value = cfg.model;
+  $('f-temp').value = cfg.temp;
+  $('f-temp-out').textContent = cfg.temp;
+  $('settings').hidden = false;
+}
+
+$('btn-settings').onclick = openSettings;
+$('settings').onclick = e => { if (e.target.id === 'settings') $('settings').hidden = true; };
+$('f-temp').oninput = e => $('f-temp-out').textContent = e.target.value;
+$('btn-save').onclick = () => {
+  localStorage.setItem(LS.key, $('f-key').value.trim());
+  localStorage.setItem(LS.model, $('f-model').value.trim() || 'venice-uncensored-1-2');
+  localStorage.setItem(LS.temp, $('f-temp').value);
+  $('settings').hidden = true;
+  input.focus();
+};
+
+$('btn-models').onclick = async () => {
+  try {
+    const r = await fetch(`${API}/models?type=text`, {
+      headers: { Authorization: `Bearer ${$('f-key').value.trim() || cfg.key}` }
+    });
+    const j = await r.json();
+    $('models').innerHTML = (j.data || []).map(m => `<option value="${m.id}">`).join('');
+  } catch { alert('Could not fetch models — check the key.'); }
+};
+
+$('btn-clear').onclick = () => {
+  if (!confirm('Clear the whole conversation?')) return;
+  messages = []; localStorage.removeItem(LS.log); render();
+};
+
+$('btn-voice').onclick = e => {
+  localStorage.setItem(LS.voice, cfg.voice ? 'off' : 'on');
+  e.currentTarget.classList.toggle('on', cfg.voice);
+};
+$('btn-voice').classList.toggle('on', cfg.voice);
+
+function render() {
+  log.innerHTML = '';
+  for (const m of messages) bubble(m.role, m.content);
+  log.scrollTop = log.scrollHeight;
+}
+
+function bubble(role, text) {
+  const el = document.createElement('div');
+  el.className = 'msg ' + (role === 'user' ? 'user' : 'bot');
+  el.textContent = text;
+  log.appendChild(el);
+  log.scrollTop = log.scrollHeight;
+  return el;
+}
+
+function errorNote(text) {
+  const el = document.createElement('div');
+  el.className = 'msg err';
+  el.textContent = text;
+  log.appendChild(el);
+  log.scrollTop = log.scrollHeight;
+}
+
+function speak(text) {
+  if (!cfg.voice || !window.speechSynthesis) return;
+  speechSynthesis.cancel();
+  const u = new SpeechSynthesisUtterance(text.replace(/[*_`#]/g, ''));
+  u.rate = 1.02; u.pitch = 0.92;
+  const v = speechSynthesis.getVoices()
+    .find(v => /female|samantha|zira|google uk english female/i.test(v.name));
+  if (v) u.voice = v;
+  u.onstart = () => { window.EllenAvatar.speaking = true; };
+  u.onend = () => { window.EllenAvatar.speaking = false; };
+  speechSynthesis.speak(u);
+}
+
+$('composer').onsubmit = e => { e.preventDefault(); send(); };
+input.oninput = () => {
+  input.style.height = 'auto';
+  input.style.height = Math.min(input.scrollHeight, 120) + 'px';
+};
+
+async function send() {
+  const text = input.value.trim();
+  if (!text || busy) return;
+  if (!cfg.key) { openSettings(); return; }
+
+  busy = true; sendBtn.disabled = true;
+  input.value = ''; input.style.height = 'auto';
+
+  messages.push({ role: 'user', content: text });
+  bubble('user', text);
+  localStorage.setItem(LS.log, JSON.stringify(messages));
+
+  const botEl = bubble('bot', '');
+  botEl.classList.add('typing');
+  let acc = '';
+
+  try {
+    const res = await fetch(`${API}/chat/completions`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${cfg.key}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: cfg.model, temperature: cfg.temp, stream: true,
+        messages: [{ role: 'system', content: SYSTEM }, ...messages.slice(-30)]
+      })
+    });
+
+    if (!res.ok) throw new Error(`${res.status} ${(await res.text()).slice(0, 160)}`);
+
+    const reader = res.body.getReader();
+    const dec = new TextDecoder();
+    let buf = '';
+
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buf += dec.decode(value, { stream: true });
+      const lines = buf.split('\n');
+      buf = lines.pop();
+
+      for (const line of lines) {
+        const s = line.trim();
+        if (!s.startsWith('data:')) continue;
+        const payload = s.slice(5).trim();
+        if (payload === '[DONE]') continue;
+        try {
+          const delta = JSON.parse(payload).choices?.[0]?.delta?.content;
+          if (delta) {
+            acc += delta;
+            botEl.textContent = acc;
+            log.scrollTop = log.scrollHeight;
+            window.EllenAvatar.speaking = true;
+          }
+        } catch {}
+      }
+    }
+
+    botEl.classList.remove('typing');
+    if (!acc) botEl.textContent = '(...nothing. Great.)';
+    messages.push({ role: 'assistant', content: acc });
+    localStorage.setItem(LS.log, JSON.stringify(messages));
+    speak(acc);
+  } catch (err) {
+    botEl.remove();
+    errorNote('Failed: ' + err.message);
+    window.EllenAvatar.speaking = false;
+  } finally {
+    busy = false; sendBtn.disabled = false;
+    if (!window.speechSynthesis?.speaking) window.EllenAvatar.speaking = false;
+  }
+}
+
+render();
+if (!cfg.key) openSettings();
+</script>
+</body>
+</html>
